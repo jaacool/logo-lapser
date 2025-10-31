@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import type { ProcessedFile } from '../types';
-import { ChevronLeftIcon, ChevronRightIcon, GridIcon, SingleViewIcon } from './Icons';
+import type { ProcessedFile, UploadedFile } from '../types';
+import { ChevronLeftIcon, ChevronRightIcon, GridIcon, SingleViewIcon, PlayIcon, PauseIcon } from './Icons';
 import { DebugToggle } from './DebugToggle';
-import { Spinner } from './Spinner';
 
 interface PreviewerProps {
   files: ProcessedFile[];
+  originalFiles: UploadedFile[];
   masterFileId: string | null;
   isDebugMode: boolean;
   onSetDebugMode: (value: boolean) => void;
@@ -14,6 +14,7 @@ interface PreviewerProps {
 
 export const Previewer: React.FC<PreviewerProps> = ({ 
     files, 
+    originalFiles,
     masterFileId,
     isDebugMode, 
     onSetDebugMode,
@@ -21,6 +22,7 @@ export const Previewer: React.FC<PreviewerProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<'grid' | 'single'>('grid');
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
     // Reset index if files array changes to avoid out-of-bounds errors
@@ -28,12 +30,40 @@ export const Previewer: React.FC<PreviewerProps> = ({
     setCurrentIndex(masterIndex !== -1 ? masterIndex : 0);
   }, [files, masterFileId]);
 
+  useEffect(() => {
+    if (!isPlaying || files.length === 0) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      setCurrentIndex(prevIndex => (prevIndex + 1) % files.length);
+    }, 1000 / 8); // 8 fps
+
+    return () => clearInterval(intervalId);
+  }, [isPlaying, files.length]);
+
   const handleNext = () => {
+    setIsPlaying(false);
     setCurrentIndex((prevIndex) => (prevIndex + 1) % files.length);
   };
 
   const handlePrev = () => {
+    setIsPlaying(false);
     setCurrentIndex((prevIndex) => (prevIndex - 1 + files.length) % files.length);
+  };
+
+  const handleViewModeChange = (mode: 'grid' | 'single') => {
+    if (mode === 'grid') {
+      setIsPlaying(false);
+    }
+    setViewMode(mode);
+  };
+
+  const handlePlayToggle = () => {
+    if (!isPlaying) {
+      setViewMode('single');
+    }
+    setIsPlaying(prev => !prev);
   };
   
   if (files.length === 0) {
@@ -41,6 +71,7 @@ export const Previewer: React.FC<PreviewerProps> = ({
   }
   
   const currentFile = files[currentIndex];
+  const originalFile = originalFiles.find(f => f.id === currentFile.id);
   const isCurrentFileMaster = currentFile?.id === masterFileId;
 
   return (
@@ -60,11 +91,14 @@ export const Previewer: React.FC<PreviewerProps> = ({
                 <span>Change Selection</span>
             </button>
             <div className="flex items-center bg-gray-700 rounded-md p-1">
-              <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded ${viewMode === 'grid' ? 'bg-cyan-500 text-white' : 'text-gray-400 hover:bg-gray-600'}`} aria-label="Grid View">
+              <button onClick={() => handleViewModeChange('grid')} className={`p-1.5 rounded ${viewMode === 'grid' ? 'bg-cyan-500 text-white' : 'text-gray-400 hover:bg-gray-600'}`} aria-label="Grid View">
                   <GridIcon className="w-5 h-5" />
               </button>
-              <button onClick={() => setViewMode('single')} className={`p-1.5 rounded ${viewMode === 'single' ? 'bg-cyan-500 text-white' : 'text-gray-400 hover:bg-gray-600'}`} aria-label="Single View">
+              <button onClick={() => handleViewModeChange('single')} className={`p-1.5 rounded ${viewMode === 'single' && !isPlaying ? 'bg-cyan-500 text-white' : 'text-gray-400 hover:bg-gray-600'}`} aria-label="Single View">
                   <SingleViewIcon className="w-5 h-5" />
+              </button>
+              <button onClick={handlePlayToggle} className={`p-1.5 rounded ${isPlaying ? 'bg-cyan-500 text-white' : 'text-gray-400 hover:bg-gray-600'}`} aria-label={isPlaying ? 'Pause' : 'Play'}>
+                {isPlaying ? <PauseIcon className="w-5 h-5" /> : <PlayIcon className="w-5 h-5" />}
               </button>
             </div>
             <DebugToggle isChecked={isDebugMode} onChange={onSetDebugMode} />
@@ -73,20 +107,45 @@ export const Previewer: React.FC<PreviewerProps> = ({
 
        {viewMode === 'single' && (
         <div className="w-full flex flex-col items-center mb-4">
-            <div className="relative w-full max-w-3xl aspect-[16/9] bg-gray-900 rounded-lg overflow-hidden group">
-                <img 
-                    src={(isDebugMode ? currentFile.debugUrl : currentFile.processedUrl) || currentFile.processedUrl} 
-                    alt={currentFile.originalName} 
-                    className="w-full h-full object-contain"
-                />
-                <button onClick={handlePrev} className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100 disabled:opacity-20" aria-label="Previous image">
-                    <ChevronLeftIcon className="w-6 h-6" />
-                </button>
-                <button onClick={handleNext} className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100 disabled:opacity-20" aria-label="Next image">
-                    <ChevronRightIcon className="w-6 h-6" />
-                </button>
+            <div className="relative w-full max-w-xl group">
+                 <div className="grid grid-cols-2 gap-8">
+                    {/* Original Image */}
+                    <div className="flex flex-col items-center">
+                        <h3 className="text-lg font-semibold text-gray-400 mb-2">Original</h3>
+                        <div className="w-full aspect-[9/16] bg-gray-900 rounded-lg overflow-hidden">
+                            {originalFile && (
+                                <img 
+                                    src={originalFile.previewUrl} 
+                                    alt={`Original - ${originalFile.file.name}`}
+                                    className="w-full h-full object-contain"
+                                />
+                            )}
+                        </div>
+                    </div>
+                    {/* Processed Image */}
+                    <div className="flex flex-col items-center">
+                         <h3 className="text-lg font-semibold text-cyan-400 mb-2">Processed</h3>
+                        <div className="w-full aspect-[9/16] bg-gray-900 rounded-lg overflow-hidden">
+                            <img 
+                                src={(isDebugMode ? currentFile.debugUrl : currentFile.processedUrl) || currentFile.processedUrl} 
+                                alt={currentFile.originalName} 
+                                className="w-full h-full object-contain"
+                            />
+                        </div>
+                    </div>
+                </div>
+                {!isPlaying && (
+                  <>
+                    <button onClick={handlePrev} className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100 disabled:opacity-20" aria-label="Previous image">
+                        <ChevronLeftIcon className="w-6 h-6" />
+                    </button>
+                    <button onClick={handleNext} className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100 disabled:opacity-20" aria-label="Next image">
+                        <ChevronRightIcon className="w-6 h-6" />
+                    </button>
+                  </>
+                )}
             </div>
-            <div className="text-center mt-3 p-2 rounded-md bg-gray-800 w-full max-w-3xl">
+            <div className="text-center mt-3 p-2 rounded-md bg-gray-800 w-full max-w-xl">
                 <p className="text-sm text-gray-300 truncate font-mono" title={currentFile.originalName}>
                     {`[${currentIndex + 1}/${files.length}] `}{currentFile.originalName}
                 </p>

@@ -7,7 +7,7 @@ export interface UploadedFile {
 }
 
 export interface ProcessedFile {
-  id?: string; // To identify the master file in the processed list
+  id: string; // To identify the master file in the processed list
   originalName: string;
   processedUrl:string;
   debugUrl: string;

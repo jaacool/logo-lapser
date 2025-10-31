@@ -103,117 +103,132 @@ export default function App() {
     setError(null);
     setProcessedFiles([]);
     setProcessingProgress(0);
+    setProcessingStatus('Initializing processor...');
 
-    const masterFile = uploadedFiles.find(f => f.id === masterFileId);
-    if (!masterFile) {
-      setError("Master file not found.");
-      setIsProcessing(false);
-      return;
-    }
-    
-    // Ensure master file itself is not marked for perspective correction
-    const standardFiles = uploadedFiles.filter(f => !f.needsPerspectiveCorrection);
-    const perspectiveFiles = uploadedFiles.filter(f => f.needsPerspectiveCorrection && f.id !== masterFileId);
-    const totalFiles = standardFiles.length + perspectiveFiles.length;
-    let filesProcessedCount = 0;
-    
-    // --- STAGE 1: Process standard files ---
-    setProcessingStatus('Stage 1/3: Aligning standard images...');
-    let stage1Results: ProcessedFile[] = [];
-    for (const targetFile of standardFiles) {
-        try {
-            const { processedUrl, debugUrl } = await processImageLocally(
-                masterFile.imageElement,
-                targetFile.imageElement,
-                isGreedyMode,
-                isRefinementEnabled,
-                false, // No perspective correction for standard files
-                targetFile.id === masterFileId
-            );
-            stage1Results.push({
-                id: targetFile.id,
-                originalName: targetFile.file.name,
-                processedUrl,
-                debugUrl,
-            });
-            filesProcessedCount++;
-            setProcessingProgress((filesProcessedCount / totalFiles) * 100);
-            setProcessedFiles([...stage1Results]); // Show incremental progress
-        } catch (err) {
-            console.error("Error processing standard file:", targetFile.file.name, err);
-            setError(`Failed during standard alignment of ${targetFile.file.name}.`);
+    // This function yields control back to the event loop, allowing UI updates to render.
+    const yieldToMain = () => new Promise(resolve => setTimeout(resolve, 0));
+
+    // Defer the heavy processing to the next event loop tick to allow the UI to update immediately.
+    setTimeout(async () => {
+        const masterFile = uploadedFiles.find(f => f.id === masterFileId);
+        if (!masterFile) {
+            setError("Master file not found.");
             setIsProcessing(false);
             return;
         }
-    }
 
-    // --- STAGE 2: Ensemble Correction on standard files ---
-    let finalStandardResults = stage1Results;
-    if (isEnsembleCorrectionEnabled && standardFiles.length > 1) {
-        setProcessingStatus('Stage 2/3: Applying ensemble correction...');
-        const masterResult = stage1Results.find(f => f.id === masterFileId);
-        if (masterResult) {
-            const goldenTemplateElement = await dataUrlToImageElement(masterResult.processedUrl);
-            const refinedResults: ProcessedFile[] = [masterResult];
-            const otherFiles = stage1Results.filter(f => f.id !== masterFileId);
-
-            for (const fileToRefine of otherFiles) {
-                const refinedUrl = await refineWithGoldenTemplate(fileToRefine.processedUrl, goldenTemplateElement);
-                refinedResults.push({ ...fileToRefine, processedUrl: refinedUrl });
-            }
-            finalStandardResults = refinedResults;
-            setProcessedFiles(finalStandardResults);
-        }
-    }
-
-    // --- STAGE 3: Process perspective files against the corrected master ---
-    let finalResults = [...finalStandardResults];
-    if (perspectiveFiles.length > 0) {
-        setProcessingStatus('Stage 3/3: Correcting perspective images...');
-        const processedMasterResult = finalStandardResults.find(f => f.id === masterFileId);
-        if (!processedMasterResult) {
-             setError("Could not find processed master to align perspective images.");
-             setIsProcessing(false);
-             return;
-        }
-
-        const processedMasterElement = await dataUrlToImageElement(processedMasterResult.processedUrl);
-
-        for (const targetFile of perspectiveFiles) {
+        const standardFiles = uploadedFiles.filter(f => !f.needsPerspectiveCorrection);
+        const perspectiveFiles = uploadedFiles.filter(f => f.needsPerspectiveCorrection && f.id !== masterFileId);
+        const totalFiles = standardFiles.length + perspectiveFiles.length;
+        let filesProcessedCount = 0;
+        
+        // --- STAGE 1: Process standard files ---
+        setProcessingStatus('Stage 1/3: Aligning standard images...');
+        await yieldToMain();
+        
+        let stage1Results: ProcessedFile[] = [];
+        for (const targetFile of standardFiles) {
             try {
-                // First pass: correct the perspective
                 const { processedUrl, debugUrl } = await processImageLocally(
-                    processedMasterElement, // Use the CLEAN, processed master
+                    masterFile.imageElement,
                     targetFile.imageElement,
                     isGreedyMode,
                     isRefinementEnabled,
-                    true, // Enable perspective correction
-                    false
+                    false, // No perspective correction for standard files
+                    targetFile.id === masterFileId
                 );
-                
-                // Second pass: refine the now perspective-corrected image for a perfect fit
-                const refinedUrl = await refineWithGoldenTemplate(processedUrl, processedMasterElement);
-
-                finalResults.push({
+                stage1Results.push({
                     id: targetFile.id,
                     originalName: targetFile.file.name,
-                    processedUrl: refinedUrl, // Use the final refined URL
+                    processedUrl,
                     debugUrl,
                 });
                 filesProcessedCount++;
                 setProcessingProgress((filesProcessedCount / totalFiles) * 100);
-                setProcessedFiles([...finalResults]);
+                setProcessedFiles([...stage1Results]); // Show incremental progress
+                await yieldToMain();
             } catch (err) {
-                console.error("Error processing perspective file:", targetFile.file.name, err);
-                setError(`Failed during perspective correction of ${targetFile.file.name}.`);
-                // Continue to show other results
+                console.error("Error processing standard file:", targetFile.file.name, err);
+                setError(`Failed during standard alignment of ${targetFile.file.name}.`);
+                setIsProcessing(false);
+                return;
             }
         }
-    }
 
-    setProcessedFiles(finalResults);
-    setIsProcessing(false);
-    setProcessingStatus('Processing Complete');
+        // --- STAGE 2: Ensemble Correction on standard files ---
+        let finalStandardResults = stage1Results;
+        if (isEnsembleCorrectionEnabled && standardFiles.length > 1) {
+            setProcessingStatus('Stage 2/3: Applying ensemble correction...');
+            await yieldToMain();
+
+            const masterResult = stage1Results.find(f => f.id === masterFileId);
+            if (masterResult) {
+                const goldenTemplateElement = await dataUrlToImageElement(masterResult.processedUrl);
+                const refinedResults: ProcessedFile[] = [masterResult];
+                const otherFiles = stage1Results.filter(f => f.id !== masterFileId);
+
+                for (const fileToRefine of otherFiles) {
+                    const refinedUrl = await refineWithGoldenTemplate(fileToRefine.processedUrl, goldenTemplateElement);
+                    refinedResults.push({ ...fileToRefine, processedUrl: refinedUrl });
+                    await yieldToMain(); // Yield after each refinement
+                }
+                finalStandardResults = refinedResults;
+                setProcessedFiles(finalStandardResults);
+            }
+        }
+
+        // --- STAGE 3: Process perspective files against the corrected master ---
+        let finalResults = [...finalStandardResults];
+        if (perspectiveFiles.length > 0) {
+            setProcessingStatus('Stage 3/3: Correcting perspective images...');
+            await yieldToMain();
+
+            const processedMasterResult = finalStandardResults.find(f => f.id === masterFileId);
+            if (!processedMasterResult) {
+                 setError("Could not find processed master to align perspective images.");
+                 setIsProcessing(false);
+                 return;
+            }
+
+            const processedMasterElement = await dataUrlToImageElement(processedMasterResult.processedUrl);
+
+            for (const targetFile of perspectiveFiles) {
+                try {
+                    // First pass: correct the perspective
+                    const { processedUrl, debugUrl } = await processImageLocally(
+                        processedMasterElement, // Use the CLEAN, processed master
+                        targetFile.imageElement,
+                        isGreedyMode,
+                        isRefinementEnabled,
+                        true, // Enable perspective correction
+                        false
+                    );
+                    
+                    // Second pass: refine the now perspective-corrected image for a perfect fit
+                    const refinedUrl = await refineWithGoldenTemplate(processedUrl, processedMasterElement);
+
+                    finalResults.push({
+                        id: targetFile.id,
+                        originalName: targetFile.file.name,
+                        processedUrl: refinedUrl, // Use the final refined URL
+                        debugUrl,
+                    });
+                    filesProcessedCount++;
+                    setProcessingProgress((filesProcessedCount / totalFiles) * 100);
+                    setProcessedFiles([...finalResults]);
+                    await yieldToMain();
+                } catch (err) {
+                    console.error("Error processing perspective file:", targetFile.file.name, err);
+                    setError(`Failed during perspective correction of ${targetFile.file.name}.`);
+                    // Continue to show other results
+                }
+            }
+        }
+
+        setProcessedFiles(finalResults);
+        setIsProcessing(false);
+        setProcessingStatus('Processing Complete');
+    }, 0);
   }, [masterFileId, uploadedFiles, isGreedyMode, isRefinementEnabled, isEnsembleCorrectionEnabled]);
 
   const handleExport = useCallback(async () => {
@@ -289,7 +304,7 @@ export default function App() {
         <div className="flex items-center gap-3">
           <LogoIcon className="h-8 w-8 text-cyan-400" />
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-            Logo Match Cut <span className="text-cyan-400">AI</span>
+            Logo-Lapser
           </h1>
         </div>
         {(uploadedFiles.length > 0) && (
@@ -315,6 +330,7 @@ export default function App() {
               <div className="flex flex-col items-center">
                 <Previewer 
                   files={processedFiles} 
+                  originalFiles={uploadedFiles}
                   masterFileId={masterFileId}
                   isDebugMode={isDebugMode}
                   onSetDebugMode={setIsDebugMode}
