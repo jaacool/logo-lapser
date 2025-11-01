@@ -15,8 +15,15 @@ export interface ProcessedFile {
   debugUrl: string;
 }
 
+// FIX: Define and export an interface for aistudio to resolve the type conflict, as suggested by the error message.
+export interface AIStudio {
+  hasSelectedApiKey: () => Promise<boolean>;
+  openSelectKey: () => Promise<void>;
+}
+
 declare global {
   interface Window {
     cv?: any; // OpenCV.js
+    aistudio?: AIStudio;
   }
 }

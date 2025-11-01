@@ -3,7 +3,7 @@ import { FileDropzone } from './components/FileDropzone';
 import { ImageGrid } from './components/ImageGrid';
 import { Previewer } from './components/Previewer';
 import { processImageLocally, refineWithGoldenTemplate } from './services/imageProcessorService';
-import { generateVariation, downloadLogs } from './services/geminiService';
+import { generateVariation } from './services/geminiService';
 import { fileToImageElement, dataUrlToImageElement } from './utils/fileUtils';
 import type { UploadedFile, ProcessedFile, AspectRatio } from './types';
 import { JaaCoolMediaLogo, LogoIcon } from './components/Icons';
@@ -17,6 +17,7 @@ import { AspectRatioSelector } from './components/AspectRatioSelector';
 import { AIVariationsToggle } from './components/AIVariationsToggle';
 import { VariationSelector } from './components/VariationSelector';
 import { PromptCustomizer } from './components/PromptCustomizer';
+import { ApiKeyModal } from './components/ApiKeyModal';
 
 declare var JSZip: any;
 
@@ -65,6 +66,7 @@ export default function App() {
   const [fixingImageId, setFixingImageId] = useState<string | null>(null);
   const [promptSnippets, setPromptSnippets] = useState<string[]>(DEFAULT_PROMPT_SNIPPETS);
   const [selectedSnippets, setSelectedSnippets] = useState<string[]>(DEFAULT_PROMPT_SNIPPETS);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   
   useEffect(() => {
     // Check if OpenCV is loaded
@@ -93,6 +95,25 @@ export default function App() {
         }
     }
   }, []);
+
+  const handleAiToggleChange = async (enabled: boolean) => {
+    if (enabled) {
+        // Only check for key if aistudio exists. Otherwise, assume it's set in env.
+        if (window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
+            const hasKey = await window.aistudio.hasSelectedApiKey();
+            if (!hasKey) {
+                setShowApiKeyModal(true); // Open modal instead of enabling toggle
+                return; 
+            }
+        }
+    }
+    setIsAiVariationsEnabled(enabled);
+  };
+
+  const handleKeySelectedFromModal = () => {
+      setShowApiKeyModal(false);
+      setIsAiVariationsEnabled(true); // Now enable the feature
+  };
 
   const handleAddSnippet = (newSnippet: string) => {
     const trimmedSnippet = newSnippet.trim();
@@ -345,15 +366,18 @@ export default function App() {
                     const errorMessage = `Failed to create AI variation ${i + 1}.`;
                     console.error(errorMessage, err);
                     
-                    // Try to parse a more specific error from Gemini
                     let detailedError = '';
-                    try {
-                        const errorJson = JSON.parse(err.message);
-                        if (errorJson?.error?.message) {
-                            detailedError = errorJson.error.message;
+                    if (err.message && err.message.includes('Requested entity was not found')) {
+                        detailedError = 'API key selection error. Please try selecting your API key again.';
+                    } else {
+                        try {
+                            const errorJson = JSON.parse(err.message);
+                            if (errorJson?.error?.message) {
+                                detailedError = errorJson.error.message;
+                            }
+                        } catch (e) {
+                             detailedError = err.message; // Fallback to raw message
                         }
-                    } catch (e) {
-                         detailedError = err.message; // Fallback to raw message
                     }
                     
                     setError(prev => (prev ? prev + ' | ' : '') + `${errorMessage} ${detailedError}`);
@@ -500,6 +524,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col p-4 sm:p-6 lg:p-8">
+       {showApiKeyModal && (
+        <ApiKeyModal 
+            onClose={() => setShowApiKeyModal(false)}
+            onKeySelected={handleKeySelectedFromModal}
+        />
+      )}
       <header className="flex items-start justify-between mb-6">
         <div>
           <JaaCoolMediaLogo className="h-5 w-auto mb-2" />
@@ -511,23 +541,14 @@ export default function App() {
           </div>
         </div>
         <div className="flex flex-col items-end gap-2 text-right">
-            <span className="text-xs font-mono text-gray-500">v5.1</span>
+            <span className="text-xs font-mono text-gray-500">v5.0</span>
             {(uploadedFiles.length > 0) && (
-            <div className="flex flex-col gap-2">
-                <button
-                    onClick={resetState}
-                    className="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
-                >
-                    Start Over
-                </button>
-                <button
-                    onClick={downloadLogs}
-                    className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
-                    title="Download debug logs"
-                >
-                    📋 Logs
-                </button>
-            </div>
+            <button
+                onClick={resetState}
+                className="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
+            >
+                Start Over
+            </button>
             )}
         </div>
       </header>
@@ -602,7 +623,7 @@ export default function App() {
                         <div className="w-full max-w-5xl p-4 bg-gray-800/50 rounded-lg">
                             <h3 className="text-center text-lg text-gray-300 mb-4">5. Generative AI Controls</h3>
                             <div className="flex flex-col items-center justify-center gap-6">
-                                <AIVariationsToggle isChecked={isAiVariationsEnabled} onChange={setIsAiVariationsEnabled} />
+                                <AIVariationsToggle isChecked={isAiVariationsEnabled} onChange={handleAiToggleChange} />
                                 {isAiVariationsEnabled && (
                                     <div className="w-full flex flex-col sm:flex-row items-center justify-center gap-6">
                                         <VariationSelector selectedValue={numVariations} onSelectValue={setNumVariations} max={6} />
