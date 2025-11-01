@@ -1,0 +1,5 @@
+# Force rebuild by ignoring cache
+node_modules
+dist
+.env.local
+.vercel
