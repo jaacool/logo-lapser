@@ -58,86 +58,131 @@ export const generateVariation = async (
     referenceImages: ProcessedFile[], 
     prompt: string
 ): Promise<string> => {
-    try {
-        createLogEntry('START', {
-            imageCount: referenceImages.length,
-            promptLength: prompt.length,
-            promptPreview: prompt.substring(0, 100) + (prompt.length > 100 ? '...' : ''),
-            hasApiKey: !!GEMINI_API_KEY,
-            apiKeyLength: GEMINI_API_KEY.length
-        });
-        
-        const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-        createLogEntry('AI_CLIENT_CREATED', { model: 'gemini-2.5-flash-image' });
-
-        const imageParts = referenceImages.map((image, index) => {
-            const base64Data = dataUrlToBase64(image.processedUrl);
-            createLogEntry('IMAGE_PROCESSING', {
-                imageIndex: index,
-                originalUrlLength: image.processedUrl.length,
-                base64Length: base64Data.length,
-                isValidBase64: base64Data.length > 0
+    let retryCount = 0;
+    const maxRetries = 2;
+    
+    while (retryCount <= maxRetries) {
+        try {
+            createLogEntry('START', {
+                imageCount: referenceImages.length,
+                promptLength: prompt.length,
+                promptPreview: prompt.substring(0, 100) + (prompt.length > 100 ? '...' : ''),
+                hasApiKey: !!GEMINI_API_KEY,
+                apiKeyLength: GEMINI_API_KEY.length,
+                retryAttempt: retryCount
             });
             
-            return {
-                inlineData: {
-                    mimeType: 'image/png',
-                    data: base64Data,
-                },
-            };
-        });
+            const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+            createLogEntry('AI_CLIENT_CREATED', { model: 'gemini-2.5-flash-image' });
 
-        const textPart = { text: prompt };
-        const contents = { parts: [textPart, ...imageParts] };
-        
-        createLogEntry('REQUEST_PREPARED', {
-            totalParts: contents.parts.length,
-            imagePartsCount: imageParts.length,
-            contentSize: JSON.stringify(contents).length
-        });
+            // For retry attempts, use fewer images to reduce payload size
+            let imagesToUse = referenceImages;
+            if (retryCount >= 1) {
+                imagesToUse = referenceImages.slice(0, Math.min(3, referenceImages.length));
+                createLogEntry('REDUCED_IMAGES', {
+                    originalCount: referenceImages.length,
+                    reducedCount: imagesToUse.length,
+                    reason: 'Retry attempt - reducing payload size'
+                });
+            }
 
-        console.log('Sending request to Gemini API...');
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
-            contents: contents,
-            config: {
-                responseModalities: [Modality.IMAGE],
-            },
-        });
-
-        createLogEntry('API_RESPONSE_RECEIVED', {
-            hasCandidates: !!response.candidates,
-            candidatesCount: response.candidates?.length || 0,
-            hasContent: !!response.candidates?.[0]?.content,
-            partsCount: response.candidates?.[0]?.content?.parts?.length || 0
-        });
-
-        // Extract the image data
-        for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData) {
-                const base64ImageBytes: string = part.inlineData.data;
-                createLogEntry('IMAGE_EXTRACTED', {
-                    base64Length: base64ImageBytes.length,
-                    isValidBase64: base64ImageBytes.length > 0
+            const processedImages = imagesToUse.map((image, index) => {
+                const base64Data = dataUrlToBase64(image.processedUrl);
+                createLogEntry('IMAGE_PROCESSING', {
+                    imageIndex: index,
+                    originalUrlLength: image.processedUrl.length,
+                    base64Length: base64Data.length,
+                    isValidBase64: base64Data.length > 0
                 });
                 
-                const imageUrl = `data:image/png;base64,${base64ImageBytes}`;
-                createLogEntry('SUCCESS', { imageUrlLength: imageUrl.length });
-                return imageUrl;
+                return {
+                    inlineData: {
+                        mimeType: 'image/png',
+                        data: base64Data,
+                    },
+                };
+            });
+
+            const textPart = { text: prompt };
+            const contents = { parts: [textPart, ...processedImages] };
+            
+            createLogEntry('REQUEST_PREPARED', {
+                totalParts: contents.parts.length,
+                imagePartsCount: processedImages.length,
+                contentSize: JSON.stringify(contents).length,
+                retryAttempt: retryCount
+            });
+
+            // Add timeout for the request
+            const requestPromise = ai.models.generateContent({
+                model: 'gemini-2.5-flash-image',
+                contents: contents,
+                config: {
+                    responseModalities: [Modality.IMAGE],
+                },
+            });
+
+            // Add timeout wrapper
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Request timeout after 60 seconds')), 60000);
+            });
+
+            console.log('Sending request to Gemini API...');
+            const response = await Promise.race([requestPromise, timeoutPromise]);
+
+            createLogEntry('API_RESPONSE_RECEIVED', {
+                hasCandidates: !!response.candidates,
+                candidatesCount: response.candidates?.length || 0,
+                hasContent: !!response.candidates?.[0]?.content,
+                partsCount: response.candidates?.[0]?.content?.parts?.length || 0
+            });
+
+            // Extract the image data
+            for (const part of response.candidates[0].content.parts) {
+                if (part.inlineData) {
+                    const base64ImageBytes: string = part.inlineData.data;
+                    createLogEntry('IMAGE_EXTRACTED', {
+                        base64Length: base64ImageBytes.length,
+                        isValidBase64: base64ImageBytes.length > 0
+                    });
+                    
+                    const imageUrl = `data:image/png;base64,${base64ImageBytes}`;
+                    createLogEntry('SUCCESS', { 
+                        imageUrlLength: imageUrl.length,
+                        retryAttempt: retryCount 
+                    });
+                    return imageUrl;
+                }
             }
+            
+            throw new Error("AI did not return an image.");
+        } catch (error) {
+            createLogEntry('ERROR', {
+                errorMessage: error.message,
+                errorName: error.name,
+                errorStack: error.stack,
+                errorCode: error.status || error.code,
+                errorDetails: error.details || error.response?.data,
+                retryAttempt: retryCount
+            });
+            
+            console.error('Error in generateVariation (attempt ' + retryCount + '):', error);
+            
+            // If this is a timeout or network error, retry
+            if (retryCount < maxRetries && 
+                (error.message.includes('timeout') || 
+                 error.message.includes('Load failed') ||
+                 error.message.includes('network'))) {
+                retryCount++;
+                createLogEntry('RETRY', {
+                    retryAttempt: retryCount,
+                    maxRetries: maxRetries,
+                    reason: error.message
+                });
+                continue;
+            }
+            
+            throw error;
         }
-        
-        throw new Error("AI did not return an image.");
-    } catch (error) {
-        createLogEntry('ERROR', {
-            errorMessage: error.message,
-            errorName: error.name,
-            errorStack: error.stack,
-            errorCode: error.status || error.code,
-            errorDetails: error.details || error.response?.data
-        });
-        
-        console.error('Error in generateVariation:', error);
-        throw error;
     }
 };
