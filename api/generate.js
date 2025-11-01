@@ -1,5 +1,5 @@
-// === VERSION v5.4 - SERVERLESS API WITH IMAGE COMPRESSION ===
-// Should be deployed on Vercel with smart compression for all 10 images
+// === VERSION v5.5 - FRONTEND COMPRESSION FIX ===
+// Should be deployed on Vercel - frontend compresses images to 100KB each
 import { GoogleGenAI, Modality } from '@google/genai';
 
 // Helper function to create log entries
