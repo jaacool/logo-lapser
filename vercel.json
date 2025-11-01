@@ -3,17 +3,5 @@
     "api/*.js": {
       "maxDuration": 60
     }
-  },
-  "env": {
-    "GEMINI_API_KEY": "@gemini_api_key"
-  },
-  "build": {
-    "env": {
-      "FORCE_DEPLOY": "true",
-      "BUILD_VERSION": "v5.3-FINAL"
-    }
-  },
-  "installCommand": "npm install --force",
-  "framework": "vite",
-  "outputDirectory": "dist"
+  }
 }
