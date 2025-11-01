@@ -4,12 +4,75 @@ import type { ProcessedFile } from '../types';
 // Helper to convert data URL to base64
 const dataUrlToBase64 = (dataUrl: string): string => dataUrl.split(',')[1];
 
+// Enhanced logging system
+const createLogEntry = (type: string, data: any) => {
+    const timestamp = new Date().toISOString();
+    const logEntry = {
+        timestamp,
+        type,
+        data,
+        userAgent: navigator.userAgent,
+        url: window.location.href
+    };
+    
+    // Store in localStorage for debugging
+    const existingLogs = JSON.parse(localStorage.getItem('serverlessLogs') || '[]');
+    existingLogs.push(logEntry);
+    
+    // Keep only last 50 entries
+    if (existingLogs.length > 50) {
+        existingLogs.splice(0, existingLogs.length - 50);
+    }
+    
+    localStorage.setItem('serverlessLogs', JSON.stringify(existingLogs));
+    
+    // Also log to console
+    console.log(`[SERVERLESS-${type}]`, logEntry);
+    
+    return logEntry;
+};
+
+// Export function to download logs
+export const downloadLogs = () => {
+    const logs = JSON.parse(localStorage.getItem('serverlessLogs') || '[]');
+    const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `serverless-logs-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+};
+
 export const generateVariation = async (
     referenceImages: ProcessedFile[], 
     prompt: string
 ): Promise<string> => {
     try {
-        console.log('Sending request to serverless API...');
+        createLogEntry('START', {
+            imageCount: referenceImages.length,
+            promptLength: prompt.length,
+            promptPreview: prompt.substring(0, 100) + (prompt.length > 100 ? '...' : ''),
+            timestamp: Date.now()
+        });
+        
+        // Log image details
+        referenceImages.forEach((image, index) => {
+            createLogEntry('IMAGE_DETAILS', {
+                imageIndex: index,
+                originalUrlLength: image.processedUrl.length,
+                base64Length: dataUrlToBase64(image.processedUrl).length,
+                isValidBase64: dataUrlToBase64(image.processedUrl).length > 0
+            });
+        });
+
+        createLogEntry('API_CALL_START', {
+            endpoint: '/api/generate',
+            method: 'POST',
+            bodySize: JSON.stringify({ referenceImages, prompt }).length
+        });
         
         const response = await fetch('/api/generate', {
             method: 'POST',
@@ -22,20 +85,50 @@ export const generateVariation = async (
             })
         });
 
-        console.log('API response status:', response.status);
+        createLogEntry('API_RESPONSE_RECEIVED', {
+            status: response.status,
+            statusText: response.statusText,
+            ok: response.ok,
+            headers: Object.fromEntries(response.headers.entries())
+        });
 
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
+            let errorData;
+            try {
+                errorData = await response.json();
+                createLogEntry('API_ERROR_PARSED', {
+                    errorData,
+                    responseText: await response.text()
+                });
+            } catch (e) {
+                const responseText = await response.text();
+                createLogEntry('API_ERROR_TEXT', {
+                    responseText,
+                    parseError: e.message
+                });
+                errorData = { error: responseText };
+            }
+            
             const errorMessage = errorData.details || errorData.error || 'Failed to generate variation';
             throw new Error(errorMessage);
         }
 
         const data = await response.json();
-        console.log('Successfully generated variation');
+        createLogEntry('SUCCESS', {
+            hasImageUrl: !!data.imageUrl,
+            imageUrlLength: data.imageUrl?.length || 0,
+            timestamp: Date.now()
+        });
+        
         return data.imageUrl;
         
     } catch (error) {
-        console.error('Error in generateVariation:', error);
+        createLogEntry('ERROR', {
+            errorMessage: error.message,
+            errorName: error.name,
+            errorStack: error.stack,
+            timestamp: Date.now()
+        });
         throw error;
     }
 };

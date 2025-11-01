@@ -3,7 +3,7 @@ import { FileDropzone } from './components/FileDropzone';
 import { ImageGrid } from './components/ImageGrid';
 import { Previewer } from './components/Previewer';
 import { processImageLocally, refineWithGoldenTemplate } from './services/imageProcessorService';
-import { generateVariation } from './services/geminiService';
+import { generateVariation, downloadLogs } from './services/geminiService';
 import { fileToImageElement, dataUrlToImageElement } from './utils/fileUtils';
 import type { UploadedFile, ProcessedFile, AspectRatio } from './types';
 import { JaaCoolMediaLogo, LogoIcon } from './components/Icons';
@@ -525,12 +525,21 @@ export default function App() {
         <div className="flex flex-col items-end gap-2 text-right">
             <span className="text-xs font-mono text-gray-500">v5.0</span>
             {(uploadedFiles.length > 0) && (
-            <button
-                onClick={resetState}
-                className="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
-            >
-                Start Over
-            </button>
+            <div className="flex flex-col gap-2">
+                <button
+                    onClick={resetState}
+                    className="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
+                >
+                    Start Over
+                </button>
+                <button
+                    onClick={downloadLogs}
+                    className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+                    title="Download debug logs"
+                >
+                    📋 Logs
+                </button>
+            </div>
             )}
         </div>
       </header>
