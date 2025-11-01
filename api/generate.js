@@ -1,5 +1,5 @@
-// === FINAL VERSION v5.3 - SERVERLESS API ===
-// Should be deployed on Vercel with comprehensive logging
+// === VERSION v5.4 - SERVERLESS API WITH IMAGE COMPRESSION ===
+// Should be deployed on Vercel with smart compression for all 10 images
 import { GoogleGenAI, Modality } from '@google/genai';
 
 // Helper function to create log entries

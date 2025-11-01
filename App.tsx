@@ -1,6 +1,6 @@
-// === FINAL VERSION v5.3 - SERVERLESS API WITH COMPREHENSIVE LOGGING ===
-// Features: Serverless API, Download Logs, No API Key in Browser
-// Deploy: Should show v5.3-FINAL + "Serverless API" in UI
+// === VERSION v5.4 - SERVERLESS API WITH IMAGE COMPRESSION ===
+// Features: Serverless API, All 10 Images, Smart Compression, Download Logs
+// Deploy: Should show v5.4 + "Serverless API" in UI
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { FileDropzone } from './components/FileDropzone';
@@ -527,8 +527,8 @@ export default function App() {
           </div>
         </div>
         <div className="flex flex-col items-end gap-2 text-right">
-            {/* === FINAL VERSION v5.3 - SERVERLESS API WITH LOGS === */}
-            <span className="text-xs font-mono text-gray-500">v5.3-FINAL</span>
+            {/* === VERSION v5.4 - SERVERLESS API WITH IMAGE COMPRESSION === */}
+            <span className="text-xs font-mono text-gray-500">v5.4</span>
             <span className="text-xs font-mono text-green-400">Serverless API</span>
             {(uploadedFiles.length > 0) && (
             <div className="flex flex-col gap-2">
