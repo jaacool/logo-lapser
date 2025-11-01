@@ -17,7 +17,6 @@ import { AspectRatioSelector } from './components/AspectRatioSelector';
 import { AIVariationsToggle } from './components/AIVariationsToggle';
 import { VariationSelector } from './components/VariationSelector';
 import { PromptCustomizer } from './components/PromptCustomizer';
-import { ApiKeyModal } from './components/ApiKeyModal';
 
 declare var JSZip: any;
 
@@ -66,7 +65,6 @@ export default function App() {
   const [fixingImageId, setFixingImageId] = useState<string | null>(null);
   const [promptSnippets, setPromptSnippets] = useState<string[]>(DEFAULT_PROMPT_SNIPPETS);
   const [selectedSnippets, setSelectedSnippets] = useState<string[]>(DEFAULT_PROMPT_SNIPPETS);
-  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   
   useEffect(() => {
     // Check if OpenCV is loaded
@@ -98,21 +96,11 @@ export default function App() {
 
   const handleAiToggleChange = async (enabled: boolean) => {
     if (enabled) {
-        // Only check for key if aistudio exists. Otherwise, assume it's set in env.
-        if (window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
-            const hasKey = await window.aistudio.hasSelectedApiKey();
-            if (!hasKey) {
-                setShowApiKeyModal(true); // Open modal instead of enabling toggle
-                return; 
-            }
-        }
+      // For serverless API, no key check needed - just enable
+      setIsAiVariationsEnabled(true);
+    } else {
+      setIsAiVariationsEnabled(false);
     }
-    setIsAiVariationsEnabled(enabled);
-  };
-
-  const handleKeySelectedFromModal = () => {
-      setShowApiKeyModal(false);
-      setIsAiVariationsEnabled(true); // Now enable the feature
   };
 
   const handleAddSnippet = (newSnippet: string) => {
@@ -524,12 +512,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col p-4 sm:p-6 lg:p-8">
-       {showApiKeyModal && (
-        <ApiKeyModal 
-            onClose={() => setShowApiKeyModal(false)}
-            onKeySelected={handleKeySelectedFromModal}
-        />
-      )}
       <header className="flex items-start justify-between mb-6">
         <div>
           <JaaCoolMediaLogo className="h-5 w-auto mb-2" />

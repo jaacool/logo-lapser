@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality } from "@google/genai";
+import { GoogleGenAI, Modality } from '@google/genai';
 import type { ProcessedFile } from '../types';
 
 // Helper to convert data URL to base64
@@ -8,39 +8,34 @@ export const generateVariation = async (
     referenceImages: ProcessedFile[], 
     prompt: string
 ): Promise<string> => {
-    // Instantiate AI client here to ensure the latest API key is used.
-    // This is crucial for environments where the key can be selected by the user at runtime.
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+        console.log('Sending request to serverless API...');
+        
+        const response = await fetch('/api/generate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                referenceImages,
+                prompt
+            })
+        });
 
-    const imageParts = referenceImages.map(image => ({
-        inlineData: {
-            mimeType: 'image/png',
-            data: dataUrlToBase64(image.processedUrl),
-        },
-    }));
+        console.log('API response status:', response.status);
 
-    const textPart = {
-        text: prompt,
-    };
-
-    const contents = { parts: [textPart, ...imageParts] };
-
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: contents,
-        config: {
-            responseModalities: [Modality.IMAGE],
-        },
-    });
-
-    // Extract the image data
-    for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) {
-            const base64ImageBytes: string = part.inlineData.data;
-            // Return as a data URL to be consistent
-            return `data:image/png;base64,${base64ImageBytes}`;
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const errorMessage = errorData.details || errorData.error || 'Failed to generate variation';
+            throw new Error(errorMessage);
         }
+
+        const data = await response.json();
+        console.log('Successfully generated variation');
+        return data.imageUrl;
+        
+    } catch (error) {
+        console.error('Error in generateVariation:', error);
+        throw error;
     }
-    
-    throw new Error("AI did not return an image.");
 };
