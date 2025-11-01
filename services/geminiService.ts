@@ -73,142 +73,95 @@ export const generateVariation = async (
     referenceImages: ProcessedFile[], 
     prompt: string
 ): Promise<string> => {
-    let retryCount = 0;
-    const maxRetries = 2;
-    
-    while (retryCount <= maxRetries) {
-        try {
-            createLogEntry('START', {
-                imageCount: referenceImages.length,
-                promptLength: prompt.length,
-                promptPreview: prompt.substring(0, 100) + (prompt.length > 100 ? '...' : ''),
-                hasApiKey: !!GEMINI_API_KEY,
-                apiKeyLength: GEMINI_API_KEY.length,
-                retryAttempt: retryCount
-            });
-            
-            const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-            createLogEntry('AI_CLIENT_CREATED', { model: 'gemini-2.5-flash-image' });
+    try {
+        createLogEntry('START', {
+            imageCount: referenceImages.length,
+            promptLength: prompt.length,
+            promptPreview: prompt.substring(0, 100) + (prompt.length > 100 ? '...' : ''),
+            hasApiKey: !!GEMINI_API_KEY,
+            apiKeyLength: GEMINI_API_KEY.length,
+            retryAttempt: 0
+        });
+        
+        // Test with a very simple request first
+        const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+        createLogEntry('AI_CLIENT_CREATED', { model: 'gemini-2.5-flash-image' });
 
-            // Start with just 1 image for browser compatibility
-            let imagesToUse = referenceImages;
-            if (retryCount === 0) {
-                imagesToUse = referenceImages.slice(0, 1); // Only 1 image on first attempt
-                createLogEntry('REDUCED_IMAGES', {
-                    originalCount: referenceImages.length,
-                    reducedCount: imagesToUse.length,
-                    reason: 'Browser compatibility - using only 1 image'
+        // Try a minimal test request to see if API is blocked
+        createLogEntry('TEST_REQUEST', { reason: 'Testing if Gemini API is accessible from browser' });
+        
+        const testRequest = ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: { parts: [{ text: "test" }] },
+        });
+
+        // 10 second timeout for test
+        const testTimeout = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('API test timeout - Gemini API blocked by browser')), 10000);
+        });
+
+        await Promise.race([testRequest, testTimeout]);
+        createLogEntry('TEST_SUCCESS', { message: 'Gemini API is accessible' });
+
+        // If test passes, try the real request with minimal data
+        const singleImage = referenceImages[0];
+        const base64Data = dataUrlToBase64(singleImage.processedUrl);
+        const minimalData = base64Data.substring(0, 50000); // Only 50KB
+        
+        createLogEntry('REAL_REQUEST', {
+            imageSize: minimalData.length,
+            note: 'Attempting real request with minimal image data'
+        });
+
+        const requestPromise = ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: {
+                parts: [
+                    { text: prompt.substring(0, 200) }, // Shorter prompt
+                    { inlineData: { mimeType: 'image/png', data: minimalData } }
+                ]
+            },
+            config: {
+                responseModalities: [Modality.IMAGE],
+            },
+        });
+
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Request timeout after 15 seconds')), 15000);
+        });
+
+        const response = await Promise.race([requestPromise, timeoutPromise]);
+
+        createLogEntry('API_RESPONSE_RECEIVED', {
+            hasCandidates: !!response.candidates,
+            candidatesCount: response.candidates?.length || 0
+        });
+
+        // Extract the image data
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                const base64ImageBytes: string = part.inlineData.data;
+                createLogEntry('SUCCESS', { 
+                    base64Length: base64ImageBytes.length
                 });
-            } else if (retryCount >= 1) {
-                imagesToUse = referenceImages.slice(0, 1); // Still only 1 image
-                createLogEntry('REDUCED_IMAGES', {
-                    originalCount: referenceImages.length,
-                    reducedCount: imagesToUse.length,
-                    reason: 'Retry attempt - still using 1 image'
-                });
+                return `data:image/png;base64,${base64ImageBytes}`;
             }
-
-            const processedImages = imagesToUse.map((image, index) => {
-                const base64Data = dataUrlToBase64(image.processedUrl);
-                const resizedData = resizeBase64Image(base64Data, 300000); // Max 300KB per image
-                
-                createLogEntry('IMAGE_PROCESSING', {
-                    imageIndex: index,
-                    originalUrlLength: image.processedUrl.length,
-                    originalBase64Length: base64Data.length,
-                    resizedBase64Length: resizedData.length,
-                    sizeReduction: base64Data.length - resizedData.length,
-                    isValidBase64: resizedData.length > 0
-                });
-                
-                return {
-                    inlineData: {
-                        mimeType: 'image/png',
-                        data: resizedData,
-                    },
-                };
-            });
-
-            const textPart = { text: prompt };
-            const contents = { parts: [textPart, ...processedImages] };
-            
-            createLogEntry('REQUEST_PREPARED', {
-                totalParts: contents.parts.length,
-                imagePartsCount: processedImages.length,
-                contentSize: JSON.stringify(contents).length,
-                retryAttempt: retryCount
-            });
-
-            // Very short timeout for faster feedback
-            const requestPromise = ai.models.generateContent({
-                model: 'gemini-2.5-flash-image',
-                contents: contents,
-                config: {
-                    responseModalities: [Modality.IMAGE],
-                },
-            });
-
-            // 20 second timeout
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Request timeout after 20 seconds')), 20000);
-            });
-
-            console.log('Sending request to Gemini API...');
-            const response = await Promise.race([requestPromise, timeoutPromise]);
-
-            createLogEntry('API_RESPONSE_RECEIVED', {
-                hasCandidates: !!response.candidates,
-                candidatesCount: response.candidates?.length || 0,
-                hasContent: !!response.candidates?.[0]?.content,
-                partsCount: response.candidates?.[0]?.content?.parts?.length || 0
-            });
-
-            // Extract the image data
-            for (const part of response.candidates[0].content.parts) {
-                if (part.inlineData) {
-                    const base64ImageBytes: string = part.inlineData.data;
-                    createLogEntry('IMAGE_EXTRACTED', {
-                        base64Length: base64ImageBytes.length,
-                        isValidBase64: base64ImageBytes.length > 0
-                    });
-                    
-                    const imageUrl = `data:image/png;base64,${base64ImageBytes}`;
-                    createLogEntry('SUCCESS', { 
-                        imageUrlLength: imageUrl.length,
-                        retryAttempt: retryCount 
-                    });
-                    return imageUrl;
-                }
-            }
-            
-            throw new Error("AI did not return an image.");
-        } catch (error) {
-            createLogEntry('ERROR', {
-                errorMessage: error.message,
-                errorName: error.name,
-                errorStack: error.stack,
-                errorCode: error.status || error.code,
-                errorDetails: error.details || error.response?.data,
-                retryAttempt: retryCount
-            });
-            
-            console.error('Error in generateVariation (attempt ' + retryCount + '):', error);
-            
-            // If this is a timeout or network error, retry
-            if (retryCount < maxRetries && 
-                (error.message.includes('timeout') || 
-                 error.message.includes('Load failed') ||
-                 error.message.includes('network'))) {
-                retryCount++;
-                createLogEntry('RETRY', {
-                    retryAttempt: retryCount,
-                    maxRetries: maxRetries,
-                    reason: error.message
-                });
-                continue;
-            }
-            
-            throw error;
         }
+        
+        throw new Error("AI did not return an image.");
+        
+    } catch (error) {
+        createLogEntry('ERROR', {
+            errorMessage: error.message,
+            errorName: error.name,
+            isBrowserBlock: error.message.includes('blocked') || error.message.includes('timeout')
+        });
+        
+        // If it's a browser block, give user helpful information
+        if (error.message.includes('blocked') || error.message.includes('timeout')) {
+            throw new Error("Browser Security Block: Safari blocks direct AI API calls. Please try Chrome/Firefox or use a local server. The API key works, but browser security prevents the request.");
+        }
+        
+        throw error;
     }
 };
