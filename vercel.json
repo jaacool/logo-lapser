@@ -15,11 +15,5 @@
   },
   "installCommand": "npm install --force",
   "framework": "vite",
-  "outputDirectory": "dist",
-  "deployHooks": [
-    {
-      "id": "force-deploy",
-      "url": "https://api.vercel.com/v1/integrations/deploy/prj_q49KmHH12RGhHmKAHaQvvzuZ3G9U/1BgZsFFsvJ"
-    }
-  ]
+  "outputDirectory": "dist"
 }
