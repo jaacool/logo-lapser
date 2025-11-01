@@ -1,3 +1,7 @@
+// === FINAL VERSION v5.3 - SERVERLESS API WITH COMPREHENSIVE LOGGING ===
+// Features: Serverless API, Download Logs, No API Key in Browser
+// Deploy: Should show v5.3-FINAL + "Serverless API" in UI
+
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { FileDropzone } from './components/FileDropzone';
 import { ImageGrid } from './components/ImageGrid';
@@ -523,8 +527,9 @@ export default function App() {
           </div>
         </div>
         <div className="flex flex-col items-end gap-2 text-right">
-            {/* Version updated for Vercel deploy */}
-            <span className="text-xs font-mono text-gray-500">v5.2.2</span>
+            {/* === FINAL VERSION v5.3 - SERVERLESS API WITH LOGS === */}
+            <span className="text-xs font-mono text-gray-500">v5.3-FINAL</span>
+            <span className="text-xs font-mono text-green-400">Serverless API</span>
             {(uploadedFiles.length > 0) && (
             <div className="flex flex-col gap-2">
                 <button

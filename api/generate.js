@@ -1,3 +1,5 @@
+// === FINAL VERSION v5.3 - SERVERLESS API ===
+// Should be deployed on Vercel with comprehensive logging
 import { GoogleGenAI, Modality } from '@google/genai';
 
 // Helper function to create log entries
