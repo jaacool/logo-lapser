@@ -1,5 +1,5 @@
-// === VERSION v5.5 - FRONTEND COMPRESSION FIX ===
-// Should be deployed on Vercel - frontend compresses images to 100KB each
+// === VERSION v5.6 - RADICAL PAYBACK OPTIMIZATION ===
+// Should be deployed on Vercel - frontend sends raw base64 (50KB each)
 import { GoogleGenAI, Modality } from '@google/genai';
 
 // Helper function to create log entries

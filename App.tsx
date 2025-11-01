@@ -1,6 +1,6 @@
-// === VERSION v5.5 - FRONTEND COMPRESSION FIX ===
-// Features: Serverless API, All 10 Images, Frontend Compression (100KB each), Download Logs
-// Deploy: Should show v5.5 + "Serverless API" in UI
+// === VERSION v5.6 - RADICAL PAYBACK OPTIMIZATION ===
+// Features: Serverless API, All 10 Images, 50KB Compression, Raw Base64, Download Logs
+// Deploy: Should show v5.6 + "Serverless API" in UI
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { FileDropzone } from './components/FileDropzone';
@@ -527,8 +527,8 @@ export default function App() {
           </div>
         </div>
         <div className="flex flex-col items-end gap-2 text-right">
-            {/* === VERSION v5.5 - FRONTEND COMPRESSION FIX === */}
-            <span className="text-xs font-mono text-gray-500">v5.5</span>
+            {/* === VERSION v5.6 - RADICAL PAYBACK OPTIMIZATION === */}
+            <span className="text-xs font-mono text-gray-500">v5.6</span>
             <span className="text-xs font-mono text-green-400">Serverless API</span>
             {(uploadedFiles.length > 0) && (
             <div className="flex flex-col gap-2">
