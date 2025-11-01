@@ -511,7 +511,7 @@ export default function App() {
           </div>
         </div>
         <div className="flex flex-col items-end gap-2 text-right">
-            <span className="text-xs font-mono text-gray-500">v5.0</span>
+            <span className="text-xs font-mono text-gray-500">v5.1</span>
             {(uploadedFiles.length > 0) && (
             <button
                 onClick={resetState}
