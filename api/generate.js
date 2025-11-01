@@ -68,26 +68,41 @@ export default async function handler(req, res) {
     const ai = new GoogleGenAI({ apiKey });
     createLog('AI_CLIENT_INIT_SUCCESS', {});
 
-    // Process images - take first 3 to avoid timeout
-    const imagesToProcess = referenceImages.slice(0, 3);
+    // Process images - take only 1 image to avoid size limit
+    const imagesToProcess = referenceImages.slice(0, 1);
     createLog('IMAGE_PROCESSING_START', {
       totalImages: referenceImages.length,
-      processingImages: imagesToProcess.length
+      processingImages: imagesToProcess.length,
+      reason: 'Vercel size limit - using only 1 image'
     });
 
     const imageParts = imagesToProcess.map((image, index) => {
       const base64Data = image.processedUrl.split(',')[1];
+      
+      // Resize image to reduce payload (max 500KB)
+      let resizedData = base64Data;
+      if (base64Data.length > 500000) {
+        resizedData = base64Data.substring(0, 500000);
+        createLog('IMAGE_RESIZED', {
+          imageIndex: index,
+          originalSize: base64Data.length,
+          newSize: resizedData.length,
+          reduction: base64Data.length - resizedData.length
+        });
+      }
+      
       createLog('IMAGE_PROCESSED', {
         imageIndex: index,
         originalUrlLength: image.processedUrl.length,
-        base64Length: base64Data.length,
-        isValidBase64: base64Data.length > 0
+        originalBase64Length: base64Data.length,
+        finalBase64Length: resizedData.length,
+        isValidBase64: resizedData.length > 0
       });
       
       return {
         inlineData: {
           mimeType: 'image/png',
-          data: base64Data,
+          data: resizedData,
         },
       };
     });
