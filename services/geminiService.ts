@@ -63,9 +63,9 @@ export const generateVariation = async (
             const base64Data = image.processedUrl.split(',')[1];
             let compressedData = base64Data;
             
-            // Compress to max 100KB per image
-            if (base64Data.length > 100000) {
-                compressedData = base64Data.substring(0, 100000);
+            // Compress to max 50KB per image (more aggressive)
+            if (base64Data.length > 50000) {
+                compressedData = base64Data.substring(0, 50000);
                 createLogEntry('IMAGE_COMPRESSED_FRONTEND', {
                     imageIndex: index,
                     originalSize: base64Data.length,
@@ -76,7 +76,7 @@ export const generateVariation = async (
             
             return {
                 ...image,
-                processedUrl: `data:image/png;base64,${compressedData}`
+                processedUrl: compressedData // Send only base64, no data URL prefix
             };
         });
         

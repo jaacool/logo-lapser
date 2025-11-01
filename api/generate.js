@@ -77,32 +77,20 @@ export default async function handler(req, res) {
     });
 
     const imageParts = imagesToProcess.map((image, index) => {
-      const base64Data = image.processedUrl.split(',')[1];
-      
-      // Resize image to reduce payload (max 200KB per image to fit all 10 images)
-      let resizedData = base64Data;
-      if (base64Data.length > 200000) {
-        resizedData = base64Data.substring(0, 200000);
-        createLog('IMAGE_RESIZED', {
-          imageIndex: index,
-          originalSize: base64Data.length,
-          newSize: resizedData.length,
-          reduction: base64Data.length - resizedData.length
-        });
-      }
+      // processedUrl is now just base64 data, not full data URL
+      const base64Data = image.processedUrl;
       
       createLog('IMAGE_PROCESSED', {
         imageIndex: index,
         originalUrlLength: image.processedUrl.length,
-        originalBase64Length: base64Data.length,
-        finalBase64Length: resizedData.length,
-        isValidBase64: resizedData.length > 0
+        finalBase64Length: base64Data.length,
+        isValidBase64: base64Data.length > 0
       });
       
       return {
         inlineData: {
           mimeType: 'image/png',
-          data: resizedData,
+          data: base64Data,
         },
       };
     });
