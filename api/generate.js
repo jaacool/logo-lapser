@@ -68,21 +68,21 @@ export default async function handler(req, res) {
     const ai = new GoogleGenAI({ apiKey });
     createLog('AI_CLIENT_INIT_SUCCESS', {});
 
-    // Process images - take only 1 image to avoid size limit
-    const imagesToProcess = referenceImages.slice(0, 1);
+    // Process images - compress all images to fit size limit
+    const imagesToProcess = referenceImages;
     createLog('IMAGE_PROCESSING_START', {
       totalImages: referenceImages.length,
       processingImages: imagesToProcess.length,
-      reason: 'Vercel size limit - using only 1 image'
+      reason: 'Compress all images to fit Vercel size limit'
     });
 
     const imageParts = imagesToProcess.map((image, index) => {
       const base64Data = image.processedUrl.split(',')[1];
       
-      // Resize image to reduce payload (max 500KB)
+      // Resize image to reduce payload (max 200KB per image to fit all 10 images)
       let resizedData = base64Data;
-      if (base64Data.length > 500000) {
-        resizedData = base64Data.substring(0, 500000);
+      if (base64Data.length > 200000) {
+        resizedData = base64Data.substring(0, 200000);
         createLog('IMAGE_RESIZED', {
           imageIndex: index,
           originalSize: base64Data.length,
