@@ -1,3 +1,5 @@
+export type AspectRatio = '9:16' | '1:1' | '16:9';
+
 export interface UploadedFile {
   id: string;
   file: File;

@@ -1,19 +1,25 @@
 import React from 'react';
 import type { UploadedFile } from '../types';
-import { CheckCircleIcon, PerspectiveIcon } from './Icons';
+import { PerspectiveIcon, XIcon } from './Icons';
 
 interface ImageGridProps {
   files: UploadedFile[];
   masterFileId: string | null;
   onSelectMaster: (id: string) => void;
   onTogglePerspective: (id: string) => void;
+  onDelete: (id: string) => void;
 }
 
-export const ImageGrid: React.FC<ImageGridProps> = ({ files, masterFileId, onSelectMaster, onTogglePerspective }) => {
+export const ImageGrid: React.FC<ImageGridProps> = ({ files, masterFileId, onSelectMaster, onTogglePerspective, onDelete }) => {
   
   const handlePerspectiveClick = (e: React.MouseEvent, id: string) => {
     e.stopPropagation(); // Prevent master selection when clicking the icon
     onTogglePerspective(id);
+  }
+
+  const handleDeleteClick = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    onDelete(id);
   }
   
   return (
@@ -35,6 +41,14 @@ export const ImageGrid: React.FC<ImageGridProps> = ({ files, masterFileId, onSel
             >
               <img src={file.previewUrl} alt={file.file.name} className="w-full h-full object-contain bg-gray-800" />
               
+              <button
+                onClick={(e) => handleDeleteClick(e, file.id)}
+                className="absolute top-1 right-1 p-1 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-all duration-200 z-10"
+                title="Delete Image"
+              >
+                  <XIcon className="w-4 h-4" />
+              </button>
+
               <div className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                 <p className="text-white text-xs text-center p-1 truncate">{file.file.name}</p>
               </div>
@@ -42,9 +56,6 @@ export const ImageGrid: React.FC<ImageGridProps> = ({ files, masterFileId, onSel
               {isMaster && (
                 <>
                   <div className="absolute inset-0 bg-cyan-500 bg-opacity-30"></div>
-                  <div className="absolute top-2 right-2 bg-cyan-400 text-gray-900 rounded-full p-1">
-                    <CheckCircleIcon className="w-6 h-6" />
-                  </div>
                    <div className="absolute bottom-0 left-0 right-0 bg-cyan-400 text-gray-900 text-center text-xs font-bold py-0.5">
                     MASTER
                   </div>

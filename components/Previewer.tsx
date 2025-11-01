@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import type { ProcessedFile, UploadedFile } from '../types';
-import { ChevronLeftIcon, ChevronRightIcon, GridIcon, SingleViewIcon, PlayIcon, PauseIcon } from './Icons';
+import React, { useState, useEffect, useCallback } from 'react';
+import type { ProcessedFile, UploadedFile, AspectRatio } from '../types';
+import { ChevronLeftIcon, ChevronRightIcon, GridIcon, SingleViewIcon, PlayIcon, PauseIcon, XIcon, PerspectiveIcon } from './Icons';
 import { DebugToggle } from './DebugToggle';
+import { Spinner } from './Spinner';
 
 interface PreviewerProps {
   files: ProcessedFile[];
@@ -10,6 +11,10 @@ interface PreviewerProps {
   isDebugMode: boolean;
   onSetDebugMode: (value: boolean) => void;
   onBackToSelection: () => void;
+  aspectRatio: AspectRatio;
+  onDelete: (id: string) => void;
+  onPerspectiveFix: (id: string) => void;
+  fixingImageId: string | null;
 }
 
 export const Previewer: React.FC<PreviewerProps> = ({ 
@@ -18,16 +23,23 @@ export const Previewer: React.FC<PreviewerProps> = ({
     masterFileId,
     isDebugMode, 
     onSetDebugMode,
-    onBackToSelection
+    onBackToSelection,
+    aspectRatio,
+    onDelete,
+    onPerspectiveFix,
+    fixingImageId
 }) => {
   const [viewMode, setViewMode] = useState<'grid' | 'single'>('grid');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
-    // Reset index if files array changes to avoid out-of-bounds errors
-    const masterIndex = files.findIndex(f => f.id === masterFileId);
-    setCurrentIndex(masterIndex !== -1 ? masterIndex : 0);
+    if (files.length > 0) {
+        const masterIndex = files.findIndex(f => f.id === masterFileId);
+        const newIndex = masterIndex !== -1 ? masterIndex : 0;
+        // Ensure newIndex is within bounds
+        setCurrentIndex(Math.min(newIndex, files.length - 1));
+    }
   }, [files, masterFileId]);
 
   useEffect(() => {
@@ -42,20 +54,36 @@ export const Previewer: React.FC<PreviewerProps> = ({
     return () => clearInterval(intervalId);
   }, [isPlaying, files.length]);
 
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     setIsPlaying(false);
     setCurrentIndex((prevIndex) => (prevIndex + 1) % files.length);
-  };
+  }, [files.length]);
 
-  const handlePrev = () => {
+  const handlePrev = useCallback(() => {
     setIsPlaying(false);
     setCurrentIndex((prevIndex) => (prevIndex - 1 + files.length) % files.length);
-  };
+  }, [files.length]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (viewMode === 'single' && !isPlaying && files.length > 1) {
+        if (e.key === 'ArrowRight') {
+          handleNext();
+        } else if (e.key === 'ArrowLeft') {
+          handlePrev();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [viewMode, isPlaying, files.length, handleNext, handlePrev]);
+
 
   const handleViewModeChange = (mode: 'grid' | 'single') => {
-    if (mode === 'grid') {
-      setIsPlaying(false);
-    }
+    setIsPlaying(false);
     setViewMode(mode);
   };
 
@@ -65,14 +93,41 @@ export const Previewer: React.FC<PreviewerProps> = ({
     }
     setIsPlaying(prev => !prev);
   };
+
+  const handleDeleteClick = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    onDelete(id);
+  }
   
   if (files.length === 0) {
     return null;
   }
   
   const currentFile = files[currentIndex];
-  const originalFile = originalFiles.find(f => f.id === currentFile.id);
+  const originalUploadedFile = originalFiles.find(f => f.id === currentFile.id);
   const isCurrentFileMaster = currentFile?.id === masterFileId;
+
+  // For user-uploaded files, the original is their preview.
+  // For AI variations, their "original" is the unaligned version stored in debugUrl.
+  const originalPreviewUrl = originalUploadedFile 
+    ? originalUploadedFile.previewUrl 
+    : (currentFile.id.startsWith('ai-var-') ? currentFile.debugUrl : null);
+  
+  const originalPreviewName = originalUploadedFile ? originalUploadedFile.file.name : currentFile.originalName;
+
+  const getAspectRatioStyle = (ratio: AspectRatio): React.CSSProperties => {
+    switch (ratio) {
+      case '9:16':
+        return { aspectRatio: '9 / 16' };
+      case '1:1':
+        return { aspectRatio: '1 / 1' };
+      case '16:9':
+        return { aspectRatio: '16 / 9' };
+      default:
+        return { aspectRatio: '9 / 16' };
+    }
+  };
+
 
   return (
     <div className="w-full max-w-7xl mx-auto flex flex-col items-center">
@@ -105,27 +160,44 @@ export const Previewer: React.FC<PreviewerProps> = ({
         </div>
       </div>
 
-       {viewMode === 'single' && (
+       {viewMode === 'single' && currentFile && (
         <div className="w-full flex flex-col items-center mb-4">
-            <div className="relative w-full max-w-xl group">
-                 <div className="grid grid-cols-2 gap-8">
+            <div className="relative w-full max-w-2xl group">
+                 <div className="grid grid-cols-2 gap-4">
                     {/* Original Image */}
                     <div className="flex flex-col items-center">
                         <h3 className="text-lg font-semibold text-gray-400 mb-2">Original</h3>
-                        <div className="w-full aspect-[9/16] bg-gray-900 rounded-lg overflow-hidden">
-                            {originalFile && (
+                        <div 
+                            className="w-full bg-gray-900 rounded-lg overflow-hidden"
+                            style={getAspectRatioStyle(aspectRatio)}
+                        >
+                            {originalPreviewUrl ? (
                                 <img 
-                                    src={originalFile.previewUrl} 
-                                    alt={`Original - ${originalFile.file.name}`}
+                                    src={originalPreviewUrl} 
+                                    alt={`Original - ${originalPreviewName}`}
                                     className="w-full h-full object-contain"
                                 />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center text-gray-500 p-4 text-center">
+                                    <span>Original preview not available.</span>
+                                </div>
                             )}
                         </div>
                     </div>
                     {/* Processed Image */}
                     <div className="flex flex-col items-center">
-                         <h3 className="text-lg font-semibold text-cyan-400 mb-2">Processed</h3>
-                        <div className="w-full aspect-[9/16] bg-gray-900 rounded-lg overflow-hidden">
+                         <div className="flex items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-cyan-400">Processed</h3>
+                         </div>
+                        <div 
+                            className="relative w-full bg-gray-900 rounded-lg overflow-hidden"
+                            style={getAspectRatioStyle(aspectRatio)}
+                        >
+                             {fixingImageId === currentFile.id && (
+                                <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-10">
+                                    <Spinner />
+                                </div>
+                            )}
                             <img 
                                 src={(isDebugMode ? currentFile.debugUrl : currentFile.processedUrl) || currentFile.processedUrl} 
                                 alt={currentFile.originalName} 
@@ -145,7 +217,7 @@ export const Previewer: React.FC<PreviewerProps> = ({
                   </>
                 )}
             </div>
-            <div className="text-center mt-3 p-2 rounded-md bg-gray-800 w-full max-w-xl">
+            <div className="text-center mt-3 p-2 rounded-md bg-gray-800 w-full max-w-2xl">
                 <p className="text-sm text-gray-300 truncate font-mono" title={currentFile.originalName}>
                     {`[${currentIndex + 1}/${files.length}] `}{currentFile.originalName}
                 </p>
@@ -165,12 +237,35 @@ export const Previewer: React.FC<PreviewerProps> = ({
             return (
                 <div
                 key={file.id}
-                className={`relative rounded-lg overflow-hidden group transition-all duration-200 transform hover:scale-105 aspect-square
+                style={getAspectRatioStyle(aspectRatio)}
+                className={`relative rounded-lg overflow-hidden group transition-all duration-200 transform hover:scale-105
                     ${isMaster 
                         ? 'ring-4 ring-cyan-400 shadow-2xl shadow-cyan-500/30' 
                         : 'ring-2 ring-gray-700'}
                 `}
                 >
+                {fixingImageId === file.id && (
+                    <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-20">
+                        <Spinner />
+                    </div>
+                )}
+                <button
+                    onClick={(e) => handleDeleteClick(e, file.id)}
+                    className="absolute top-1 right-1 p-1 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-all duration-200 z-10"
+                    title="Delete Image"
+                >
+                    <XIcon className="w-4 h-4" />
+                </button>
+                {!isMaster && (
+                    <button
+                        onClick={() => onPerspectiveFix(file.id)}
+                        disabled={!!fixingImageId}
+                        className="absolute bottom-1 left-1 p-1.5 rounded-full bg-black/50 text-gray-300 opacity-0 group-hover:opacity-100 hover:bg-blue-600 hover:text-white transition-all duration-200 z-10 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Re-run with Perspective Fix"
+                    >
+                        <PerspectiveIcon className="w-5 h-5" />
+                    </button>
+                )}
                 <img src={imageUrl} alt={file.originalName} className="w-full h-full object-contain bg-gray-800" />
                 
                 {isMaster && (

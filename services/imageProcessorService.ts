@@ -37,7 +37,7 @@ const performAlignment = (
     const keypointsTarget = new cv.KeyPointVector();
     
     try {
-        const MIN_MATCH_COUNT = isGreedy ? 5 : 10;
+        const MIN_MATCH_COUNT = isGreedy ? 4 : 10;
         const RATIO_TEST_THRESHOLD = isGreedy ? 0.85 : 0.75;
     
         const baseGray = new cv.Mat(); mats.push(baseGray);
@@ -267,7 +267,8 @@ export const processImageLocally = (
     isGreedyMode: boolean,
     isRefinementEnabled: boolean,
     isPerspectiveCorrectionEnabled: boolean,
-    isMaster: boolean
+    isMaster: boolean,
+    aspectRatio: string
 ): Promise<ProcessResult> => {
     return new Promise((resolve, reject) => {
         const mats: any[] = [];
@@ -333,7 +334,14 @@ export const processImageLocally = (
 
             const warpedWidth = warpedTarget.cols;
             const warpedHeight = warpedTarget.rows;
-            const targetAspectRatio = 9.0 / 16.0;
+            
+            let targetAspectRatio;
+            const [w, h] = aspectRatio.split(':').map(Number);
+            if (h > w) { // Portrait (e.g., 9:16)
+                targetAspectRatio = w / h;
+            } else { // Landscape or Square (e.g., 16:9, 1:1)
+                targetAspectRatio = w / h;
+            }
 
             let finalWidth, finalHeight;
             if ((warpedWidth / warpedHeight) > targetAspectRatio) {
@@ -350,7 +358,8 @@ export const processImageLocally = (
             const topPad = Math.floor(padY / 2);
 
             const paddedMat = new cv.Mat(); mats.push(paddedMat);
-            cv.copyMakeBorder(warpedTarget, paddedMat, topPad, padY - topPad, leftPad, padX - leftPad, cv.BORDER_REFLECT_101);
+            const transparentBlack = new cv.Scalar(0, 0, 0, 0);
+            cv.copyMakeBorder(warpedTarget, paddedMat, topPad, padY - topPad, leftPad, padX - leftPad, cv.BORDER_CONSTANT, transparentBlack);
             
             const finalCanvas = document.createElement('canvas');
             finalCanvas.width = finalWidth;
