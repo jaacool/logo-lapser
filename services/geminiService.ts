@@ -58,20 +58,39 @@ export const generateVariation = async (
             timestamp: Date.now()
         });
         
-        // Log image details
-        referenceImages.forEach((image, index) => {
-            createLogEntry('IMAGE_DETAILS', {
-                imageIndex: index,
-                originalUrlLength: image.processedUrl.length,
-                base64Length: dataUrlToBase64(image.processedUrl).length,
-                isValidBase64: dataUrlToBase64(image.processedUrl).length > 0
-            });
+        // Compress images BEFORE sending to reduce payload
+        const compressedImages = referenceImages.map((image, index) => {
+            const base64Data = image.processedUrl.split(',')[1];
+            let compressedData = base64Data;
+            
+            // Compress to max 100KB per image
+            if (base64Data.length > 100000) {
+                compressedData = base64Data.substring(0, 100000);
+                createLogEntry('IMAGE_COMPRESSED_FRONTEND', {
+                    imageIndex: index,
+                    originalSize: base64Data.length,
+                    compressedSize: compressedData.length,
+                    reduction: base64Data.length - compressedData.length
+                });
+            }
+            
+            return {
+                ...image,
+                processedUrl: `data:image/png;base64,${compressedData}`
+            };
+        });
+        
+        createLogEntry('FRONTEND_COMPRESSION_COMPLETE', {
+            originalImages: referenceImages.length,
+            compressedImages: compressedImages.length,
+            totalOriginalSize: referenceImages.reduce((sum, img) => sum + img.processedUrl.length, 0),
+            totalCompressedSize: compressedImages.reduce((sum, img) => sum + img.processedUrl.length, 0)
         });
 
         createLogEntry('API_CALL_START', {
             endpoint: '/api/generate',
             method: 'POST',
-            bodySize: JSON.stringify({ referenceImages, prompt }).length
+            bodySize: JSON.stringify({ referenceImages: compressedImages, prompt }).length
         });
         
         const response = await fetch('/api/generate', {
@@ -80,7 +99,7 @@ export const generateVariation = async (
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                referenceImages,
+                referenceImages: compressedImages,
                 prompt
             })
         });
